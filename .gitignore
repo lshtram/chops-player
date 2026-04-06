@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+dist-ssr/
+*.local
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# SoundFont files — too large for git; managed separately
+public/soundfonts/*.sf2
+public/soundfonts/*.sf3
+public/soundfonts/*.dls
+# Keep the extracted compact font if committed
+!public/soundfonts/chops-instruments.sf2
+
+# SpessaSynth worker (copied from node_modules at build time)
+public/workers/spessasynth_processor.min.js
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test coverage
+coverage/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
