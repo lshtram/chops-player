@@ -102,7 +102,7 @@ These enforce the constraint that layers can only depend downward:
 | `engine/` | `model/` | React, Zustand, Web Audio API, SpessaSynth |
 | `audio/` | `model/`, `engine/`, SpessaSynth | React, Zustand |
 | `parsers/` | `model/` | React, Zustand, Web Audio API, SpessaSynth |
-| `stores/` | `model/`, `audio/`, React, Zustand | `engine/` direct calls |
+| `stores/` | `model/`, `audio/`, `parsers/`, React, Zustand | `engine/` direct calls |
 | `components/` | `stores/`, `model/`, React, Tailwind | `audio/`, `engine/`, `parsers/` direct |
 | `utils/` | Nothing | Everything |
 
