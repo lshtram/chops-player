@@ -76,6 +76,7 @@ vi.mock("../../parsers/midi-reader.js", () => ({
 
 vi.mock("../../audio/soundfont-loader.js", () => ({
   fetchSoundFont: vi.fn().mockResolvedValue(new ArrayBuffer(1024)),
+  fetchArrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(1024)),
 }));
 
 // ---------------------------------------------------------------------------

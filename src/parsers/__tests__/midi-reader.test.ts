@@ -3,7 +3,7 @@
  *
  * API CHECKLIST — exported functions and coverage count:
  *   isMidiFile(buffer)      → 3 tests (P1-MR-001, P1-MR-002, P1-MR-003)
- *   parseMidiFile(buffer)   → 7 tests (P1-MR-004 through P1-MR-010)
+ *   parseMidiFile(buffer)   → 8 tests (P1-MR-004 through P1-MR-011)
  *
  * Test fixtures:
  *   - buildType0Midi()  — minimal valid Type 0 MIDI with 1 note
@@ -251,7 +251,7 @@ describe("parseMidiFile()", () => {
     expect(song.tracks.length).toBeGreaterThanOrEqual(2);
   });
 
-  it("P1-MR-010: extracts at least one NoteEvent from a track with note-on/note-off pairs", () => {
+  it("P1-MR-010: reads Program Change events and stores the correct program number on the track", () => {
     // Arrange
     const buffer = buildType0Midi();
 

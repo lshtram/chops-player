@@ -46,7 +46,6 @@ export class SequencerWrapper implements SequencerInterface {
       this._spessaSeq = new Sequencer(
         this._synth.getNativeSynth(),
       );
-      console.log("[SequencerWrapper] Sequencer created successfully");
       return this._spessaSeq;
     } catch (err) {
       // SpessaSynth Sequencer creation failed (e.g., in test environment with mock synth)
@@ -80,15 +79,15 @@ export class SequencerWrapper implements SequencerInterface {
   /**
    * Convert seconds to a PlaybackPosition using the song's time signature and tempo map.
    */
-  private _secondsToPosition(seconds: number): PlaybackPosition {
+  private _secondsToPosition(seconds: number, currentTick: number): PlaybackPosition {
     const ticksPerBeat = this._song?.ticksPerBeat ?? 480;
     const timeSig = this._song?.timeSignatures[0];
     const beatsPerBar = timeSig?.numerator ?? 4;
     const ticksPerBar = ticksPerBeat * beatsPerBar;
 
-    // Convert seconds to ticks using the song's tempo
+    // Convert seconds to ticks using the song's tempo at the current tick position
     // tempo is stored as microsecondsPerBeat; convert to seconds per beat
-    const microsecondsPerBeat = this._getTempoAtTick(0);
+    const microsecondsPerBeat = this._getTempoAtTick(currentTick);
     const secondsPerBeat = microsecondsPerBeat / 1_000_000;
     const totalBeats = seconds / secondsPerBeat;
     const tick = Math.floor(totalBeats * ticksPerBeat);
@@ -110,7 +109,7 @@ export class SequencerWrapper implements SequencerInterface {
     const seq = this.ensureSequencer();
     if (seq) {
       const seconds = seq.currentHighResolutionTime;
-      this._position = this._secondsToPosition(seconds);
+      this._position = this._secondsToPosition(seconds, this._position.tick);
     }
     if (this.onPositionChange) {
       this.onPositionChange(this._position);
@@ -146,25 +145,18 @@ export class SequencerWrapper implements SequencerInterface {
    * Called by the store after parsing MIDI to get raw bytes.
    */
   loadRawMidi(buffer: ArrayBuffer): void {
-    console.log("[SequencerWrapper] loadRawMidi called, buffer size:", buffer.byteLength);
     const seq = this.ensureSequencer();
     if (seq) {
-      console.log("[SequencerWrapper] calling loadNewSongList");
       // SpessaSynth expects SuppliedMIDIData with binary: ArrayBuffer
       seq.loadNewSongList([{ binary: buffer }]);
-      console.log("[SequencerWrapper] loadNewSongList done");
-    } else {
-      console.warn("[SequencerWrapper] loadRawMidi: sequencer is null, MIDI not loaded");
     }
   }
 
   play(): void {
     this._state = "playing";
     const seq = this.ensureSequencer();
-    console.log("[SequencerWrapper] play() called, seq:", seq !== null ? "ready" : "NULL");
     if (seq) {
       seq.play();
-      console.log("[SequencerWrapper] seq.play() called");
     }
 
     // P1-TR-009: onPositionChange must be called SYNCHRONOUSLY when play() is called

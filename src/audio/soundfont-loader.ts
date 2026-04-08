@@ -8,6 +8,23 @@
 import { ChopsPlayerError } from "@model/errors.ts";
 
 /**
+ * Fetch any URL as a raw ArrayBuffer (generic binary fetch).
+ *
+ * @param url - URL to fetch.
+ * @throws {ChopsPlayerError} If the fetch fails.
+ */
+export async function fetchArrayBuffer(url: string): Promise<ArrayBuffer> {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new ChopsPlayerError(
+      `Fetch failed: ${response.status} ${response.statusText}`,
+      "FETCH_FAILED",
+    );
+  }
+  return response.arrayBuffer();
+}
+
+/**
  * Fetch a SoundFont file from the given URL.
  *
  * @param url - URL to the SF2/SF3 SoundFont file.
@@ -20,6 +37,8 @@ export async function fetchSoundFont(
   onProgress?: (percent: number) => void,
 ): Promise<ArrayBuffer> {
   try {
+    // Try to use progress tracking via content-length header and streaming body
+    // Only attempt if we have all the required APIs available
     const response = await fetch(url);
 
     if (!response.ok) {
@@ -29,8 +48,6 @@ export async function fetchSoundFont(
       );
     }
 
-    // Try to use progress tracking via content-length header and streaming body
-    // Only attempt if we have all the required APIs available
     const contentLength = response.headers?.get?.("content-length");
     if (
       contentLength &&
@@ -72,7 +89,7 @@ export async function fetchSoundFont(
     if (onProgress) {
       onProgress(100);
     }
-    return await response.arrayBuffer();
+    return response.arrayBuffer();
   } catch (error) {
     if (error instanceof ChopsPlayerError) {
       throw error;

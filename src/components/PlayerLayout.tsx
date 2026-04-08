@@ -83,7 +83,15 @@ export function PlayerLayout(props: PlayerLayoutProps): React.JSX.Element {
     );
   }
 
-  const showStartButton = !isReady && !isLoading && !error;
+  if (error) {
+    return (
+      <div data-testid="player-layout">
+        <div data-testid="error-message">{error}</div>
+      </div>
+    );
+  }
+
+  const showStartButton = !isReady && !isLoading;
 
   return (
     <div data-testid="player-layout">
@@ -97,7 +105,6 @@ export function PlayerLayout(props: PlayerLayoutProps): React.JSX.Element {
           ▶ Start Player
         </button>
       )}
-      {error && <div data-testid="error-message">{error}</div>}
       <Transport />
       <MixerBoard channels={activeChannels} />
     </div>
