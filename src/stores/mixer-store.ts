@@ -25,6 +25,7 @@ export interface MixerStoreActions {
   setChannelMute(channel: number, muted: boolean): void;
   setChannelSolo(channel: number, solo: boolean): void;
   getChannelState(channel: number): ChannelState;
+  getAllChannelStates(): ReadonlyMap<number, ChannelState>;
 }
 
 export type MixerStore = MixerStoreState & MixerStoreActions;
@@ -89,6 +90,10 @@ export const useMixerStore = create<MixerStore>()((set, get) => ({
   getChannelState: (channel: number): ChannelState => {
     const state = get().channels[channel];
     return state ?? { ...DEFAULT_CHANNEL_STATE };
+  },
+
+  getAllChannelStates: (): ReadonlyMap<number, ChannelState> => {
+    return new Map(Object.entries(get().channels).map(([k, v]) => [Number(k), v])) as ReadonlyMap<number, ChannelState>;
   },
 }));
 

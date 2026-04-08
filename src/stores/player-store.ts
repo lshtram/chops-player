@@ -21,6 +21,8 @@ export interface PlayerState {
   readonly isLoading: boolean;
   readonly error: string | null;
   readonly song: Song | null;
+  readonly loadingProgress: number;
+  readonly loop: boolean;
 }
 
 export interface PlayerActions {
@@ -30,7 +32,10 @@ export interface PlayerActions {
   setLoading(loading: boolean): void;
   setError(error: string | null): void;
   setSong(song: Song | null): void;
+  setLoadingProgress(progress: number): void;
+  setLoop(loop: boolean): void;
   initialize(): Promise<void>;
+  initAudio(): Promise<void>;
   loadMidi(url: string): Promise<void>;
   loadMidiBuffer(buffer: ArrayBuffer, fileName?: string): Promise<void>;
   play(): void;
@@ -56,6 +61,8 @@ const initialState: PlayerState = {
   isLoading: false,
   error: null,
   song: null,
+  loadingProgress: 0,
+  loop: false,
 };
 
 // Singleton instance for synth and sequencer
@@ -89,6 +96,17 @@ export const usePlayerStore = create<PlayerStore>()((set, get) => ({
     set({ song });
   },
 
+  setLoadingProgress: (progress: number): void => {
+    set({ loadingProgress: Math.max(0, Math.min(100, progress)) });
+  },
+
+  setLoop: (loop: boolean): void => {
+    set({ loop });
+    if (_sequencerWrapper) {
+      _sequencerWrapper.loop = loop;
+    }
+  },
+
   initialize: async (): Promise<void> => {
     // Create singleton synth and sequencer if not already created
     if (_synthWrapper === null) {
@@ -104,6 +122,18 @@ export const usePlayerStore = create<PlayerStore>()((set, get) => ({
       _sequencerWrapper.onPositionChange = (position: PlaybackPosition) => {
         get().setPosition(position);
       };
+    }
+
+    // Note: AudioContext creation is deferred to user gesture.
+    // Call initAudio() to complete audio initialization.
+    set({ isLoading: false });
+  },
+
+  initAudio: async (): Promise<void> => {
+    if (_synthWrapper === null) {
+      _synthWrapper = new SynthWrapper({
+        workerUrl: "/workers/spessasynth_processor.min.js",
+      });
     }
 
     try {
@@ -156,7 +186,10 @@ export const usePlayerStore = create<PlayerStore>()((set, get) => ({
 
       // Load default SoundFont if not already loaded
       try {
-        await _synthWrapper.loadSoundFont("/soundfonts/chops-instruments.sf2");
+        await _synthWrapper.loadSoundFont(
+          "/soundfonts/chops-instruments.sf2",
+          (pct) => get().setLoadingProgress(pct),
+        );
       } catch {
         // SoundFont loading is optional for initialization
       }

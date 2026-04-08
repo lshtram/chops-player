@@ -27,15 +27,18 @@ import { PlayerLayout, ChopsPlayer } from "../PlayerLayout.tsx";
 // are read fresh on each call via the dynamic state factory pattern.
 // ---------------------------------------------------------------------------
 
-const { mockPlay, mockPause, mockStop, mockInitialize } = vi.hoisted(() => ({
+const { mockPlay, mockPause, mockStop, mockInitialize, mockInitAudio } = vi.hoisted(() => ({
   mockPlay: vi.fn(),
   mockPause: vi.fn(),
   mockStop: vi.fn(),
   mockInitialize: vi.fn().mockResolvedValue(undefined),
+  mockInitAudio: vi.fn().mockResolvedValue(undefined),
 }));
 
 let mockIsLoading = false;
 let mockError: string | null = null;
+let mockLoadingProgress = 0;
+let mockSong: Record<string, unknown> | null = null;
 
 vi.mock("@stores/player-store", () => ({
   // Dynamic factory: re-reads mockIsLoading/mockError on each hook call
@@ -47,15 +50,19 @@ vi.mock("@stores/player-store", () => ({
       isLoading: mockIsLoading,
       error: mockError,
       position: { tick: 0, seconds: 0, bar: 1, beat: 1 },
-      song: null,
+      song: mockSong,
       play: mockPlay,
       pause: mockPause,
       stop: mockStop,
       initialize: mockInitialize,
+      initAudio: mockInitAudio,
       loadMidi: vi.fn(),
       loadMidiBuffer: vi.fn(),
       seekToTick: vi.fn(),
       seekToBar: vi.fn(),
+      loadingProgress: mockLoadingProgress,
+      loop: false,
+      setLoop: vi.fn(),
     };
     return selector ? selector(state) : state;
   },
@@ -84,6 +91,8 @@ describe("PlayerLayout", () => {
     vi.clearAllMocks();
     mockIsLoading = false;
     mockError = null;
+    mockLoadingProgress = 0;
+    mockSong = null;
   });
 
   describe("P1-UI-008: loading indicator", () => {
@@ -168,6 +177,8 @@ describe("ChopsPlayer", () => {
     vi.clearAllMocks();
     mockIsLoading = false;
     mockError = null;
+    mockLoadingProgress = 0;
+    mockSong = null;
   });
 
   describe("P1-UI-001: ChopsPlayer as exported root", () => {

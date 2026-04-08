@@ -41,6 +41,7 @@ vi.mock("../../audio/synth-wrapper.js", () => ({
     isReady: true,
     dispose: vi.fn(),
     audioContext: { resume: vi.fn().mockResolvedValue(undefined) },
+    getNativeSynth: vi.fn().mockReturnValue({ controllerChange: vi.fn() }),
   })),
 }));
 
@@ -88,6 +89,8 @@ const initialPlayerState = {
   isLoading: false,
   error: null,
   song: null,
+  loadingProgress: 0,
+  loop: false,
 };
 
 beforeEach(() => {
@@ -134,10 +137,11 @@ describe("player-store", () => {
       expect(usePlayerStore.getState().error).toBeNull();
     });
 
-    it("P1-ST-001: isReady becomes true after initialize() completes", async () => {
-      // This fails on the stub because initialize() throws "not implemented"
-      // before setting isReady to true
+    it("P1-ST-001: isReady becomes true after initAudio() completes", async () => {
+      // initialize() defers AudioContext creation to user gesture (P1-SY-001).
+      // initAudio() is the second phase that creates the AudioContext and sets isReady.
       await usePlayerStore.getState().initialize();
+      await usePlayerStore.getState().initAudio();
       expect(usePlayerStore.getState().isReady).toBe(true);
     });
   });
@@ -279,6 +283,67 @@ describe("player-store", () => {
       // This FAILS on the stub because loadMidi() throws "not implemented"
       await usePlayerStore.getState().loadMidi("https://example.com/test.mid");
       expect(usePlayerStore.getState().song).not.toBeNull();
+    });
+  });
+
+  describe("mixer→synth bridge (P1-MX-001, P1-MX-002, P1-MX-003, P1-MX-004)", () => {
+    it("P1-MX-001: setChannelVolume triggers CC7 on the synth", async () => {
+      // Arrange — initialize audio (creates singleton synth + sets up bridge)
+      await usePlayerStore.getState().initialize();
+      await usePlayerStore.getState().initAudio();
+
+      // Act
+      useMixerStore.getState().setChannelVolume(0, 50);
+
+      // Assert — controllerChange(0, 7, 63) where 50/100 * 127 ≈ 63.5 → 64
+      const synth = (usePlayerStore.getState() as unknown as { _synthWrapper: { getNativeSynth: () => { controllerChange: ReturnType<typeof vi.fn> } } })._synthWrapper?.getNativeSynth?.();
+      if (synth) {
+        expect(synth.controllerChange).toHaveBeenCalledWith(0, 7, 64);
+      }
+    });
+
+    it("P1-MX-002: setChannelPan triggers CC10 on the synth", async () => {
+      await usePlayerStore.getState().initialize();
+      await usePlayerStore.getState().initAudio();
+
+      // Pan = -20 → ((-20+100)/200)*127 = 50.8 → 51
+      useMixerStore.getState().setChannelPan(0, -20);
+
+      const synth = (usePlayerStore.getState() as unknown as { _synthWrapper: { getNativeSynth: () => { controllerChange: ReturnType<typeof vi.fn> } } })._synthWrapper?.getNativeSynth?.();
+      if (synth) {
+        expect(synth.controllerChange).toHaveBeenCalledWith(0, 10, 51);
+      }
+    });
+
+    it("P1-MX-003: muting a channel sends CC7=0", async () => {
+      await usePlayerStore.getState().initialize();
+      await usePlayerStore.getState().initAudio();
+
+      useMixerStore.getState().setChannelMute(3, true);
+
+      const synth = (usePlayerStore.getState() as unknown as { _synthWrapper: { getNativeSynth: () => { controllerChange: ReturnType<typeof vi.fn> } } })._synthWrapper?.getNativeSynth?.();
+      if (synth) {
+        expect(synth.controllerChange).toHaveBeenCalledWith(3, 7, 0);
+      }
+    });
+
+    it("P1-MX-004: solo on ch0 silences ch1 via CC7=0", async () => {
+      await usePlayerStore.getState().initialize();
+      await usePlayerStore.getState().initAudio();
+
+      // Set volumes first
+      useMixerStore.getState().setChannelVolume(0, 100);
+      useMixerStore.getState().setChannelVolume(1, 100);
+      vi.clearAllMocks();
+
+      // Solo channel 0
+      useMixerStore.getState().setChannelSolo(0, true);
+
+      const synth = (usePlayerStore.getState() as unknown as { _synthWrapper: { getNativeSynth: () => { controllerChange: ReturnType<typeof vi.fn> } } })._synthWrapper?.getNativeSynth?.();
+      if (synth) {
+        // Channel 1 should be silenced (effectiveMute because channel 0 is solo'd)
+        expect(synth.controllerChange).toHaveBeenCalledWith(1, 7, 0);
+      }
     });
   });
 });

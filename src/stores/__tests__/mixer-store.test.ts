@@ -121,4 +121,29 @@ describe("mixer-store", () => {
       expect(state).toEqual({ volume: 100, pan: 0, muted: false, solo: false });
     });
   });
+
+  describe("getAllChannelStates() (P1-MX-007)", () => {
+    it("P1-MX-007: getAllChannelStates() returns a ReadonlyMap of all active channels", () => {
+      // Arrange — set up some channels
+      const { setChannelVolume, setChannelPan, setChannelMute } = useMixerStore.getState();
+      setChannelVolume(0, 80);
+      setChannelPan(3, -20);
+      setChannelMute(7, true);
+
+      // Act
+      const allStates = useMixerStore.getState().getAllChannelStates();
+
+      // Assert
+      expect(allStates.constructor.name).toBe("Map");
+      expect(allStates.size).toBe(3);
+      expect(allStates.get(0)?.volume).toBe(80);
+      expect(allStates.get(3)?.pan).toBe(-20);
+      expect(allStates.get(7)?.muted).toBe(true);
+    });
+
+    it("P1-MX-007: getAllChannelStates() returns empty map when no channels set", () => {
+      const allStates = useMixerStore.getState().getAllChannelStates();
+      expect(allStates.size).toBe(0);
+    });
+  });
 });

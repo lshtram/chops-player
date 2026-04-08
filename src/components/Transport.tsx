@@ -16,10 +16,17 @@ function formatTime(seconds: number): string {
 export function Transport(): React.JSX.Element {
   const playbackState = usePlayerStore((s) => s.playbackState);
   const isReady = usePlayerStore((s) => s.isReady);
-  const position = usePlayerStore((s) => s.position);
+  const positionSeconds = usePlayerStore((s) => s.position.seconds);
+  const positionBar = usePlayerStore((s) => s.position.bar);
+  const positionBeat = usePlayerStore((s) => s.position.beat);
+  const positionTick = usePlayerStore((s) => s.position.tick);
   const play = usePlayerStore((s) => s.play);
   const pause = usePlayerStore((s) => s.pause);
   const stop = usePlayerStore((s) => s.stop);
+  const durationTicks = usePlayerStore((s) => s.song?.durationTicks ?? 0);
+  const seekToTick = usePlayerStore((s) => s.seekToTick);
+  const loop = usePlayerStore((s) => s.loop);
+  const setLoop = usePlayerStore((s) => s.setLoop);
 
   const isPlaying = playbackState === "playing";
   const isPaused = playbackState === "paused";
@@ -31,10 +38,10 @@ export function Transport(): React.JSX.Element {
       className="flex items-center gap-4 bg-neutral-900 p-4 rounded-lg"
     >
       <div className="font-mono text-sm text-neutral-100 tabular-nums min-w-[5rem]">
-        <span>{formatTime(position.seconds)}</span>
+        <span>{formatTime(positionSeconds)}</span>
         <span className="text-neutral-500 mx-1">|</span>
         <span className="text-neutral-400">
-          {position.bar}.{position.beat}
+          {positionBar}.{positionBeat}
         </span>
       </div>
 
@@ -81,7 +88,32 @@ export function Transport(): React.JSX.Element {
         >
           Stop
         </button>
+
+        <button
+          onClick={() => setLoop(!loop)}
+          aria-pressed={loop}
+          data-testid="loop-button"
+          className="px-4 py-2 bg-neutral-700 hover:bg-neutral-600 text-white font-semibold rounded transition-colors cursor-pointer"
+        >
+          Loop
+        </button>
       </div>
+
+      {durationTicks > 0 && (
+        <div className="w-full mt-2">
+          <input
+            type="range"
+            min={0}
+            max={durationTicks}
+            value={positionTick}
+            disabled={durationTicks === 0}
+            onChange={(e) => seekToTick(parseInt(e.target.value, 10))}
+            aria-label="Seek"
+            data-testid="seek-slider"
+            className="w-full"
+          />
+        </div>
+      )}
     </div>
   );
 }
