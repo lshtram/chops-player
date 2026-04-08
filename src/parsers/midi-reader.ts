@@ -108,6 +108,7 @@ function parseTrack(
   trackNotes: NoteEvent[];
   trackName: string;
   channel: number;
+  program: number;
   hasAnyEvents: boolean;
   tempoMap: TempoEvent[];
   timeSignatures: TimeSignatureEvent[];
@@ -135,6 +136,7 @@ function parseTrack(
   const trackNotes: NoteEvent[] = [];
   let trackName = "";
   let channel = 0;
+  let program = 0;
   let hasAnyEvents = false;
   const activeNotes = new Map<number, { startTick: number; velocity: number }>();
   const tempoMap: TempoEvent[] = [];
@@ -164,16 +166,33 @@ function parseTrack(
     const eventChannel = runningStatus & 0x0f;
 
     switch (eventType) {
-      case 0x02: // Program change
-      case 0x03: // Channel aftertouch
-      case 0x0a: // Polyphonic key pressure
-      case 0x0b: // Control change
-      case 0x0e: // Pitch bend
-      case 0x0c: // Program change
-      case 0x0d: // Channel pressure
+      case 0x02: // Key pressure (polyphonic aftertouch) — 2 data bytes
+      case 0x03: // (unused in standard MIDI — treated as 2-byte)
+      case 0x0a: // Polyphonic key pressure — 2 data bytes
+      case 0x0b: // Control change — 2 data bytes
+      case 0x0e: // Pitch bend — 2 data bytes
         if (offset + 1 < trackEnd) {
           hasAnyEvents = true;
           offset += 2;
+        } else {
+          offset = trackEnd;
+        }
+        break;
+
+      case 0x0c: // Program change — 1 data byte
+        if (offset < trackEnd) {
+          hasAnyEvents = true;
+          program = view.getUint8(offset);
+          offset += 1;
+        } else {
+          offset = trackEnd;
+        }
+        break;
+
+      case 0x0d: // Channel pressure (aftertouch) — 1 data byte
+        if (offset < trackEnd) {
+          hasAnyEvents = true;
+          offset += 1;
         } else {
           offset = trackEnd;
         }
@@ -278,7 +297,7 @@ function parseTrack(
     });
   }
 
-  return { newOffset: trackEnd, trackNotes, trackName, channel, hasAnyEvents, tempoMap, timeSignatures };
+  return { newOffset: trackEnd, trackNotes, trackName, channel, program, hasAnyEvents, tempoMap, timeSignatures };
 }
 
 /**
@@ -311,6 +330,7 @@ export function parseMidiFile(buffer: ArrayBuffer): Song {
       trackNotes,
       trackName,
       channel,
+      program,
       hasAnyEvents,
       tempoMap: trackTempos,
       timeSignatures: trackSigs,
@@ -326,7 +346,7 @@ export function parseMidiFile(buffer: ArrayBuffer): Song {
       tracks.push({
         name: trackName || `Track ${trackIdx + 1}`,
         channel,
-        program: 0,
+        program,
         bank: 0,
         isDrum: channel === 9,
         notes: trackNotes.sort((a, b) => a.startTick - b.startTick),

@@ -1,7 +1,7 @@
 import React from 'react'
 import { ChopsPlayer } from './components/PlayerLayout.tsx'
 
-const BUILD_TS = 'v10 · Wed Apr 8 2026 17:45 IDT'
+const BUILD_TS = 'v11 · Wed Apr 8 2026 18:00 IDT'
 
 export function App(): React.JSX.Element {
   return (

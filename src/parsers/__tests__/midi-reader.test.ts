@@ -264,4 +264,41 @@ describe("parseMidiFile()", () => {
     // Verify the first note looks correct: C4 = pitch 60
     expect(allNotes[0]?.pitch).toBe(0x3c); // 0x3C = 60 = middle C
   });
+
+  it("P1-MR-011: reads Program Change events and stores the correct program number on the track", () => {
+    // Arrange — Type 0 MIDI with a Program Change to program 32 (Bass) before the note
+    const trackEvents: number[] = [
+      // Tempo 120 BPM
+      ...vlq(0), 0xff, 0x51, 0x03, 0x07, 0xa1, 0x20,
+      // Program Change ch0, program=32 (Bass): delta=0, C0 20
+      ...vlq(0), 0xc0, 0x20,
+      // Note-on ch0 C4: delta=0, 90 3C 40
+      ...vlq(0), 0x90, 0x3c, 0x40,
+      // Note-off ch0 C4: delta=96
+      ...vlq(96), 0x80, 0x3c, 0x00,
+      // End of track
+      ...vlq(0), 0xff, 0x2f, 0x00,
+    ];
+
+    const trackHeader = new Array<number>(8).fill(0);
+    trackHeader[0] = 0x4d; trackHeader[1] = 0x54;
+    trackHeader[2] = 0x72; trackHeader[3] = 0x6b;
+    writeUint32BE(trackHeader, 4, trackEvents.length);
+
+    const header = new Array<number>(14).fill(0);
+    header[0] = 0x4d; header[1] = 0x54; header[2] = 0x68; header[3] = 0x64;
+    writeUint32BE(header, 4, 6);
+    writeUint16BE(header, 8, 0);   // format 0
+    writeUint16BE(header, 10, 1);  // 1 track
+    writeUint16BE(header, 12, 480);
+
+    const buffer = new Uint8Array([...header, ...trackHeader, ...trackEvents]).buffer;
+
+    // Act
+    const song = parseMidiFile(buffer);
+
+    // Assert
+    expect(song.tracks.length).toBeGreaterThanOrEqual(1);
+    expect(song.tracks[0]?.program).toBe(32); // General MIDI program 32 = Acoustic Bass
+  });
 });
