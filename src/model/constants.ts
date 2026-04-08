@@ -54,7 +54,7 @@ export const MIDI_CHANNEL_COUNT = 16 as const;
 /**
  * Default SoundFont file path (relative to the public directory).
  */
-export const DEFAULT_SOUNDFONT_URL = "/soundfonts/chops-instruments.sf2" as const;
+export const DEFAULT_SOUNDFONT_URL = "/soundfonts/chops-jazz.sf2" as const;
 
 /**
  * Default SpessaSynth AudioWorklet processor URL (relative to public directory).

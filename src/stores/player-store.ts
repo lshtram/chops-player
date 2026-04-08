@@ -13,6 +13,7 @@ import { SequencerWrapper } from "@audio/sequencer-wrapper.js";
 import { parseMidiFile } from "@parsers/midi-reader.js";
 import { fetchArrayBuffer } from "@audio/soundfont-loader.js";
 import { useMixerStore } from "./mixer-store.js";
+import { DEFAULT_SOUNDFONT_URL } from "@model/constants.js";
 
 export interface PlayerState {
   readonly playbackState: PlaybackState;
@@ -195,7 +196,7 @@ export const usePlayerStore = create<PlayerStore>()((set, get) => ({
       // Load default SoundFont if not already loaded
       try {
         await _synthWrapper.loadSoundFont(
-          "/soundfonts/chops-instruments.sf2",
+          DEFAULT_SOUNDFONT_URL,
           (pct) => get().setLoadingProgress(pct),
         );
       } catch (e) {
