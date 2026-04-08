@@ -31,6 +31,9 @@ public/workers/spessasynth_processor.min.js
 .DS_Store
 Thumbs.db
 
+# Large audio demo files — exceed GitHub 100MB limit
+public/demo/demo-audio.wav
+
 # Test coverage
 coverage/
 
