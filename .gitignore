@@ -11,15 +11,10 @@ dist-ssr/
 .env.*
 !.env.example
 
-# SoundFont files — too large for git; managed separately
+# SoundFont files — managed separately (not committed)
 public/soundfonts/*.sf2
 public/soundfonts/*.sf3
 public/soundfonts/*.dls
-# Keep the extracted compact font if committed
-!public/soundfonts/chops-instruments.sf2
-
-# SpessaSynth worker (copied from node_modules at build time)
-public/workers/spessasynth_processor.min.js
 
 # Editor
 .vscode/
@@ -41,6 +36,13 @@ coverage/
 *.log
 npm-debug.log*
 pnpm-debug.log*
+
+# TypeScript build info (generated during tsc)
+*.tsbuildinfo
+
+# Session / agent metadata (local tooling, not project files)
+.accordo/
+.claude/
+
+# Security-sensitive config (contains API keys — never commit)
 opencode.json
-.claude/mcp.json
-.vscode/mcp.json
