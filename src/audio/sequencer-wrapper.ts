@@ -13,6 +13,8 @@ import type {
 } from "./sequencer.ts";
 import type { Synth } from "./synth.ts";
 import type { Song } from "@model/song.ts";
+import { parseMidiFile } from "@parsers/midi-reader.js";
+import { fetchArrayBuffer } from "@audio/soundfont-loader.js";
 
 export class SequencerWrapper implements SequencerInterface {
   private _state: PlaybackState = "stopped";
@@ -138,6 +140,36 @@ export class SequencerWrapper implements SequencerInterface {
       bar: 1,
       beat: 1,
     };
+  }
+
+  /**
+   * Fetch and load a MIDI file from a URL.
+   *
+   * This is the primary entry point for the store layer — it keeps the store
+   * from importing the parser directly.
+   *
+   * @returns The parsed Song and raw buffer.
+   */
+  async loadMidi(url: string): Promise<{ song: Song; buffer: ArrayBuffer }> {
+    const buffer = await fetchArrayBuffer(url);
+    const song = parseMidiFile(buffer);
+    this.load(song);
+    this.loadRawMidi(buffer);
+    return { song, buffer };
+  }
+
+  /**
+   * Parse and load a MIDI file from an in-memory ArrayBuffer.
+   *
+   * Used by the store for file-upload scenarios where the bytes are already loaded.
+   *
+   * @returns The parsed Song.
+   */
+  loadMidiBuffer(buffer: ArrayBuffer): Song {
+    const song = parseMidiFile(buffer);
+    this.load(song);
+    this.loadRawMidi(buffer);
+    return song;
   }
 
   /**

@@ -301,26 +301,24 @@ function parseTrack(
 }
 
 /**
- * Parse a Standard MIDI File (Type 0 or Type 1) from an ArrayBuffer.
+ * Collect tracks from the parsed track data, merging tempo/time sig events.
+ * Returns the collected tracks and discovered song name.
  */
-export function parseMidiFile(buffer: ArrayBuffer): Song {
-  if (buffer.byteLength === 0) {
-    throw new MidiParseError("MIDI file is empty or too short");
-  }
-
-  if (!isMidiFile(buffer)) {
-    throw new MidiParseError("Invalid MIDI header: missing MThd magic bytes");
-  }
-
-  const view = new DataView(buffer);
-  const { format, trackCount, ticksPerBeat, newOffset: headerEndOffset } =
-    parseHeader(view, 0);
-  let offset = headerEndOffset;
-
+function collectTracks(
+  view: DataView,
+  trackCount: number,
+  headerEndOffset: number,
+): {
+  tracks: Track[];
+  tempoMap: TempoEvent[];
+  timeSignatures: TimeSignatureEvent[];
+  songName: string;
+} {
   const tracks: Track[] = [];
   const tempoMap: TempoEvent[] = [];
   const timeSignatures: TimeSignatureEvent[] = [];
   let songName = "";
+  let offset = headerEndOffset;
 
   for (let trackIdx = 0; trackIdx < trackCount; trackIdx++) {
     if (offset + 8 > view.byteLength) break;
@@ -356,7 +354,17 @@ export function parseMidiFile(buffer: ArrayBuffer): Song {
     offset = newOffset;
   }
 
-  // Calculate song duration
+  return { tracks, tempoMap, timeSignatures, songName };
+}
+
+/**
+ * Calculate total song duration in seconds from tracks and tempo map.
+ */
+function calculateSongDuration(
+  tracks: Track[],
+  tempoMap: TempoEvent[],
+  ticksPerBeat: number,
+): number {
   let maxTick = 0;
   for (const track of tracks) {
     for (const note of track.notes) {
@@ -372,14 +380,41 @@ export function parseMidiFile(buffer: ArrayBuffer): Song {
 
   for (const tempo of sortedTempos) {
     const ticksInSegment = tempo.tick - prevTick;
-    const secondsInSegment = (ticksInSegment / ticksPerBeat) * (prevTempo / 1_000_000);
+    const secondsInSegment =
+      (ticksInSegment / ticksPerBeat) * (prevTempo / 1_000_000);
     durationSeconds += secondsInSegment;
     prevTick = tempo.tick;
     prevTempo = tempo.microsecondsPerBeat;
   }
 
   const remainingTicks = maxTick - prevTick;
-  durationSeconds += (remainingTicks / ticksPerBeat) * (prevTempo / 1_000_000);
+  durationSeconds +=
+    (remainingTicks / ticksPerBeat) * (prevTempo / 1_000_000);
+
+  return durationSeconds;
+}
+
+/**
+ * Parse a Standard MIDI File (Type 0 or Type 1) from an ArrayBuffer.
+ */
+export function parseMidiFile(buffer: ArrayBuffer): Song {
+  if (buffer.byteLength === 0) {
+    throw new MidiParseError("MIDI file is empty or too short");
+  }
+
+  if (!isMidiFile(buffer)) {
+    throw new MidiParseError("Invalid MIDI header: missing MThd magic bytes");
+  }
+
+  const view = new DataView(buffer);
+  const { format, trackCount, ticksPerBeat, newOffset: headerEndOffset } =
+    parseHeader(view, 0);
+
+  const { tracks, tempoMap, timeSignatures, songName } = collectTracks(
+    view,
+    trackCount,
+    headerEndOffset,
+  );
 
   if (tracks.length === 0) {
     tracks.push({
@@ -398,6 +433,16 @@ export function parseMidiFile(buffer: ArrayBuffer): Song {
 
   if (tempoMap.length === 0) {
     tempoMap.push({ tick: 0, microsecondsPerBeat: 500000 });
+  }
+
+  const durationSeconds = calculateSongDuration(tracks, tempoMap, ticksPerBeat);
+
+  let maxTick = 0;
+  for (const track of tracks) {
+    for (const note of track.notes) {
+      const endTick = note.startTick + note.durationTicks;
+      if (endTick > maxTick) maxTick = endTick;
+    }
   }
 
   return {

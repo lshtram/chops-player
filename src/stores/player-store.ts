@@ -10,8 +10,6 @@ import type { PlaybackState, PlaybackPosition } from "@audio/sequencer.ts";
 import type { Song } from "@model/song.ts";
 import { SynthWrapper } from "@audio/synth-wrapper.js";
 import { SequencerWrapper } from "@audio/sequencer-wrapper.js";
-import { parseMidiFile } from "@parsers/midi-reader.js";
-import { fetchArrayBuffer } from "@audio/soundfont-loader.js";
 import { useMixerStore } from "./mixer-store.js";
 import { DEFAULT_SOUNDFONT_URL } from "@model/constants.js";
 
@@ -69,6 +67,8 @@ const initialState: PlayerState = {
 // Singleton instance for synth and sequencer
 let _synthWrapper: SynthWrapper | null = null;
 let _sequencerWrapper: SequencerWrapper | null = null;
+// URL stashed when loadMidi is called before initAudio completes
+let _pendingMidiUrl: string | null = null;
 // Buffer held until initAudio() makes the sequencer ready
 let _pendingMidiBuffer: ArrayBuffer | null = null;
 // Guard against double-subscribing the mixer store
@@ -207,11 +207,17 @@ export const usePlayerStore = create<PlayerStore>()((set, get) => ({
         );
       }
 
-      // Flush any MIDI that was loaded before the synth was ready
+      // Flush any MIDI URL that was loaded before the synth was ready
+      if (_pendingMidiUrl !== null && _sequencerWrapper !== null) {
+        const { song } = await _sequencerWrapper.loadMidi(_pendingMidiUrl);
+        set({ song });
+        _pendingMidiUrl = null;
+      }
+
+      // Flush any MIDI buffer that was loaded before the synth was ready
       if (_pendingMidiBuffer !== null && _sequencerWrapper !== null) {
-        const song = get().song;
-        if (song) _sequencerWrapper.load(song);
-        _sequencerWrapper.loadRawMidi(_pendingMidiBuffer);
+        const song = _sequencerWrapper.loadMidiBuffer(_pendingMidiBuffer);
+        set({ song });
         _pendingMidiBuffer = null;
       }
     } catch (error) {
@@ -227,21 +233,15 @@ export const usePlayerStore = create<PlayerStore>()((set, get) => ({
     set({ isLoading: true, error: null });
 
     try {
-      // Fetch the MIDI file as a raw ArrayBuffer
-      const buffer = await fetchArrayBuffer(url);
-
-      // Parse the MIDI file
-      const song = parseMidiFile(buffer);
-
-      set({ song, isLoading: false });
-
-      // If the synth is already ready, load into sequencer immediately.
-      // Otherwise stash the buffer — initAudio() will flush it once the synth is ready.
+      // Fetch and parse is delegated to the audio bridge.
+      // If the sequencer is not yet ready, the URL is stashed for initAudio() to flush.
       if (_sequencerWrapper && _synthWrapper?.isReady) {
-        _sequencerWrapper.load(song);
-        _sequencerWrapper.loadRawMidi(buffer);
+        const { song } = await _sequencerWrapper.loadMidi(url);
+        set({ song, isLoading: false });
       } else {
-        _pendingMidiBuffer = buffer;
+        // Stash URL; initAudio will call _sequencerWrapper.loadMidi once ready.
+        _pendingMidiUrl = url;
+        set({ isLoading: false });
       }
     } catch (error) {
       console.error("[PlayerStore] loadMidi failed:", error);
@@ -257,15 +257,13 @@ export const usePlayerStore = create<PlayerStore>()((set, get) => ({
     set({ isLoading: true, error: null });
 
     try {
-      const song = parseMidiFile(buffer);
-
-      set({ song, isLoading: false });
-
+      // Delegate parsing to the audio bridge — store must not import parsers directly.
       if (_sequencerWrapper && _synthWrapper?.isReady) {
-        _sequencerWrapper.load(song);
-        _sequencerWrapper.loadRawMidi(buffer);
+        const song = _sequencerWrapper.loadMidiBuffer(buffer);
+        set({ song, isLoading: false });
       } else {
         _pendingMidiBuffer = buffer;
+        set({ isLoading: false });
       }
     } catch (error) {
       console.error("[PlayerStore] loadMidiBuffer failed:", error);
