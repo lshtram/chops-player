@@ -16,7 +16,7 @@ import struct
 import os
 import sys
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 # ---------------------------------------------------------------------------
 # SF2 structure constants
@@ -230,9 +230,19 @@ class SF2Assembler:
     # ------------------------------------------------------------------
 
     def add_preset(
-        self, sf2: ParsedSF2, bank: int, prog: int, rename: Optional[str] = None
+        self,
+        sf2: ParsedSF2,
+        bank: int,
+        prog: int,
+        rename: Optional[str] = None,
+        zone_filter: Optional[Callable[[int, int, str], bool]] = None,
     ) -> bool:
-        """Extract one preset (bank, prog) from sf2 and append to output."""
+        """Extract one preset (bank, prog) from sf2 and append to output.
+
+        zone_filter: optional callable (klo, khi, sample_name) -> bool
+            Return False to skip that instrument zone (and its sample if unused).
+            klo/khi are the key-range generators (0 if not set = full range).
+        """
         src_idx: Optional[int] = None
         for i, ph in enumerate(sf2.phdr[:-1]):  # skip EOP sentinel
             if ph[1] == prog and ph[2] == bank:
@@ -266,7 +276,7 @@ class SF2Assembler:
                 oper, amount_raw = sf2.pgen[gi]
                 if oper == GEN_INSTRUMENT:
                     src_inst_idx = struct.unpack("<H", amount_raw)[0]
-                    new_inst_idx = self._add_instrument(sf2, src_inst_idx)
+                    new_inst_idx = self._add_instrument(sf2, src_inst_idx, zone_filter)
                     amount_raw = struct.pack("<H", new_inst_idx)
                 self._pgen.append((oper, amount_raw))
 
@@ -286,8 +296,15 @@ class SF2Assembler:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _add_instrument(self, sf2: ParsedSF2, src_idx: int) -> int:
-        key = (sf2.path, src_idx)
+    def _add_instrument(
+        self,
+        sf2: ParsedSF2,
+        src_idx: int,
+        zone_filter: Optional[Callable[[int, int, str], bool]] = None,
+    ) -> int:
+        # Deduplication key includes whether a filter is active, since the
+        # same instrument filtered differently must produce different outputs.
+        key = (sf2.path, src_idx, id(zone_filter) if zone_filter else None)
         if key in self._inst_map:
             return self._inst_map[key]
 
@@ -301,12 +318,32 @@ class SF2Assembler:
         bag_end = next_inst[1]
 
         new_ibag_start = len(self._ibag)
+        skipped = 0
 
         for bag_i in range(bag_start, bag_end):
             bag = sf2.ibag[bag_i]
             next_bag = sf2.ibag[bag_i + 1]
             gen_s, gen_e = bag[0], next_bag[0]
             mod_s, mod_e = bag[1], next_bag[1]
+
+            # ----------------------------------------------------------------
+            # If a zone_filter is active, scan this zone's generators to find
+            # the key range and sample ID before deciding to include/skip.
+            # ----------------------------------------------------------------
+            if zone_filter is not None:
+                klo, khi = 0, 127
+                smp_name = ""
+                for gi in range(gen_s, gen_e):
+                    oper, amount_raw = sf2.igen[gi]
+                    if oper == 43:  # keyRange
+                        klo = amount_raw[0]
+                        khi = amount_raw[1]
+                    elif oper == GEN_SAMPLE_ID:
+                        smp_idx = struct.unpack("<H", amount_raw)[0]
+                        smp_name = sf2.shdr[smp_idx].name
+                if not zone_filter(klo, khi, smp_name):
+                    skipped += 1
+                    continue  # skip this zone entirely
 
             new_gen_start = len(self._igen)
             new_mod_start = len(self._imod)
@@ -323,6 +360,9 @@ class SF2Assembler:
                 self._imod.append(sf2.imod[mi])
 
             self._ibag.append((new_gen_start, new_mod_start))
+
+        if skipped:
+            print(f"    (filtered out {skipped} zones)")
 
         self._inst[new_idx] = (inst[0], new_ibag_start)
         return new_idx
@@ -526,8 +566,29 @@ def main() -> None:
     #  transparently on MIDI channel programs.                             #
     # ------------------------------------------------------------------ #
 
+    # Piano zone filter:
+    #   Keep ALL zones inside the comping range C2–C5 (MIDI 36–72).
+    #   Outside that range, keep only the forte ('f') samples — drop the
+    #   soft/piano ('p') layers to reduce file size.
+    COMP_LO, COMP_HI = 36, 72  # C2, C5
+
+    def piano_zone_filter(klo: int, khi: int, smp_name: str) -> bool:
+        # Always keep zones whose key range overlaps the comping region
+        if khi >= COMP_LO and klo <= COMP_HI:
+            return True
+        # Outside comping range: keep only forte zones (drop soft 'p' zones)
+        # SGM naming: "STW PIANO f A1 (L)" vs "STW PIANO p A1 (L)"
+        is_soft = " p " in smp_name
+        return not is_soft
+
     # Acoustic Grand Piano — from SGM (Piano 1, bank 0 prog 0)
-    asm.add_preset(sgm, bank=0, prog=0, rename="Acoustic Grand Piano")
+    asm.add_preset(
+        sgm,
+        bank=0,
+        prog=0,
+        rename="Acoustic Grand Piano",
+        zone_filter=piano_zone_filter,
+    )
 
     # Electric Piano — from SGM (E.Piano 1, bank 0 prog 4)
     asm.add_preset(sgm, bank=0, prog=4, rename="Electric Piano 1")
