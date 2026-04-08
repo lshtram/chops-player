@@ -68,6 +68,8 @@ const initialState: PlayerState = {
 // Singleton instance for synth and sequencer
 let _synthWrapper: SynthWrapper | null = null;
 let _sequencerWrapper: SequencerWrapper | null = null;
+// Buffer held until initAudio() makes the sequencer ready
+let _pendingMidiBuffer: ArrayBuffer | null = null;
 
 export const usePlayerStore = create<PlayerStore>()((set, get) => ({
   ...initialState,
@@ -193,6 +195,15 @@ export const usePlayerStore = create<PlayerStore>()((set, get) => ({
       } catch {
         // SoundFont loading is optional for initialization
       }
+
+      // Flush any MIDI that was loaded before the synth was ready
+      if (_pendingMidiBuffer !== null && _sequencerWrapper !== null) {
+        console.log("[PlayerStore] flushing pending MIDI buffer into sequencer");
+        const song = get().song;
+        if (song) _sequencerWrapper.load(song);
+        _sequencerWrapper.loadRawMidi(_pendingMidiBuffer);
+        _pendingMidiBuffer = null;
+      }
     } catch (error) {
       set({
         error: error instanceof Error ? error.message : "Failed to initialize audio",
@@ -217,13 +228,15 @@ export const usePlayerStore = create<PlayerStore>()((set, get) => ({
 
       set({ song, isLoading: false });
 
-      // Load into sequencer
-      if (_sequencerWrapper) {
+      // If the synth is already ready, load into sequencer immediately.
+      // Otherwise stash the buffer — initAudio() will flush it once the synth is ready.
+      if (_sequencerWrapper && _synthWrapper?.isReady) {
         console.log("[PlayerStore] loading into sequencer");
         _sequencerWrapper.load(song);
         _sequencerWrapper.loadRawMidi(buffer);
       } else {
-        console.warn("[PlayerStore] _sequencerWrapper is null — MIDI not loaded into sequencer");
+        console.log("[PlayerStore] synth not ready yet — buffering MIDI for later");
+        _pendingMidiBuffer = buffer;
       }
     } catch (error) {
       console.error("[PlayerStore] loadMidi failed:", error);
@@ -245,12 +258,13 @@ export const usePlayerStore = create<PlayerStore>()((set, get) => ({
 
       set({ song, isLoading: false });
 
-      if (_sequencerWrapper) {
+      if (_sequencerWrapper && _synthWrapper?.isReady) {
         console.log("[PlayerStore] loading buffer into sequencer");
         _sequencerWrapper.load(song);
         _sequencerWrapper.loadRawMidi(buffer);
       } else {
-        console.warn("[PlayerStore] _sequencerWrapper is null — MIDI not loaded into sequencer");
+        console.log("[PlayerStore] synth not ready yet — buffering MIDI for later");
+        _pendingMidiBuffer = buffer;
       }
     } catch (error) {
       console.error("[PlayerStore] loadMidiBuffer failed:", error);
