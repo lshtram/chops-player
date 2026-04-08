@@ -140,3 +140,29 @@ These override generic advice and must never be violated:
 3. Run `pnpm test` to verify baseline is green
 4. Identify which TDD phase the active module is in
 5. If joining mid-module, resume from the current phase forward — never skip backwards
+
+---
+
+## 8. Version Stamping Convention
+
+Both the main React app (`src/App.tsx`) and the standalone demo (`spessa-demo.html`) display a build
+version string and must **always share a single, monotonically increasing version number**.
+
+### Format
+
+```
+vN · DayOfWeek Mon DD YYYY HH:MM TZ
+```
+
+Example: `v7 · Wed Apr 8 2026 15:45 IDT`
+
+### Rules
+
+1. **Bump both pages together on every change** — never leave one page behind.
+2. **N is a simple integer** — increment by 1 for every change batch, no matter how small.
+3. **Agent announcement** — after any code change, say: `"<what changed>, now v{N}"`.
+4. **`src/App.tsx`** — update the `BUILD_TS` constant at the top of the file.
+5. **`spessa-demo.html`** — update the `BUILD_TS` `const` in the inline `<script>` section.
+6. **Both pages render the version string** in small monospace text near the top of the page.
+7. Hard-refresh required for `spessa-demo.html` changes (Ctrl+Shift+R / Cmd+Shift+R) since it is not
+   served through Vite HMR.

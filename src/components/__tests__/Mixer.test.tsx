@@ -56,6 +56,13 @@ vi.mock("@stores/mixer-store", () => ({
   },
 }));
 
+vi.mock("@stores/player-store", () => ({
+  usePlayerStore: (selector?: (s: Record<string, unknown>) => unknown) => {
+    const state = { song: null };
+    return selector ? selector(state) : state;
+  },
+}));
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -68,7 +75,7 @@ describe("MixerChannel", () => {
   describe("P1-UI-007: mixer channel strip controls", () => {
     it("P1-UI-007: renders a volume slider with the correct value", () => {
       // Arrange
-      const props = { channel: 0, volume: 80, pan: -20, muted: false, solo: false };
+      const props = { channel: 0, label: "Piano", volume: 80, pan: -20, muted: false, solo: false };
 
       // Act
       render(React.createElement(MixerChannel, props));
@@ -81,7 +88,7 @@ describe("MixerChannel", () => {
 
     it("P1-UI-007: renders a pan slider with the correct value", () => {
       // Arrange
-      const props = { channel: 0, volume: 80, pan: -20, muted: false, solo: false };
+      const props = { channel: 0, label: "Piano", volume: 80, pan: -20, muted: false, solo: false };
 
       // Act
       render(React.createElement(MixerChannel, props));
@@ -94,7 +101,7 @@ describe("MixerChannel", () => {
 
     it("P1-UI-007: renders a Mute button", () => {
       // Arrange
-      const props = { channel: 0, volume: 80, pan: -20, muted: false, solo: false };
+      const props = { channel: 0, label: "Piano", volume: 80, pan: -20, muted: false, solo: false };
 
       // Act
       render(React.createElement(MixerChannel, props));
@@ -106,7 +113,7 @@ describe("MixerChannel", () => {
 
     it("P1-UI-007: renders a Solo button", () => {
       // Arrange
-      const props = { channel: 0, volume: 80, pan: -20, muted: false, solo: false };
+      const props = { channel: 0, label: "Piano", volume: 80, pan: -20, muted: false, solo: false };
 
       // Act
       render(React.createElement(MixerChannel, props));
@@ -118,7 +125,7 @@ describe("MixerChannel", () => {
 
     it("P1-UI-007: moving the volume slider calls setChannelVolume with the new value", async () => {
       // Arrange
-      const props = { channel: 0, volume: 80, pan: -20, muted: false, solo: false };
+      const props = { channel: 0, label: "Piano", volume: 80, pan: -20, muted: false, solo: false };
       render(React.createElement(MixerChannel, props));
 
       // Act — simulate slider change
@@ -132,7 +139,7 @@ describe("MixerChannel", () => {
 
     it("P1-UI-007: clicking Mute button calls setChannelMute with channel and toggled value", () => {
       // Arrange
-      const props = { channel: 0, volume: 80, pan: -20, muted: false, solo: false };
+      const props = { channel: 0, label: "Piano", volume: 80, pan: -20, muted: false, solo: false };
       render(React.createElement(MixerChannel, props));
 
       // Act
@@ -146,7 +153,7 @@ describe("MixerChannel", () => {
 
     it("P1-UI-007: clicking Solo button calls setChannelSolo with channel and true", () => {
       // Arrange
-      const props = { channel: 0, volume: 80, pan: -20, muted: false, solo: false };
+      const props = { channel: 0, label: "Piano", volume: 80, pan: -20, muted: false, solo: false };
       render(React.createElement(MixerChannel, props));
 
       // Act

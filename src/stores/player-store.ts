@@ -12,6 +12,7 @@ import { SynthWrapper } from "@audio/synth-wrapper.js";
 import { SequencerWrapper } from "@audio/sequencer-wrapper.js";
 import { parseMidiFile } from "@parsers/midi-reader.js";
 import { fetchSoundFont } from "@audio/soundfont-loader.js";
+import { useMixerStore } from "./mixer-store.js";
 
 export interface PlayerState {
   readonly playbackState: PlaybackState;
@@ -31,6 +32,7 @@ export interface PlayerActions {
   setSong(song: Song | null): void;
   initialize(): Promise<void>;
   loadMidi(url: string): Promise<void>;
+  loadMidiBuffer(buffer: ArrayBuffer, fileName?: string): Promise<void>;
   play(): void;
   pause(): void;
   stop(): void;
@@ -108,6 +110,50 @@ export const usePlayerStore = create<PlayerStore>()((set, get) => ({
       await _synthWrapper.initialize();
       set({ isReady: true });
 
+      // Bridge mixer-store changes → SpessaSynth CC messages.
+      // Runs whenever any channel's volume, pan, mute, or solo changes.
+      useMixerStore.subscribe((mixerState, prevMixerState) => {
+        if (_synthWrapper === null || !_synthWrapper.isReady) return;
+        const synth = _synthWrapper.getNativeSynth();
+
+        // Determine which channels are soloed
+        const soloedChannels = Object.entries(mixerState.channels)
+          .filter(([, ch]) => ch.solo)
+          .map(([id]) => Number(id));
+        const anySolo = soloedChannels.length > 0;
+
+        // Only re-apply channels that actually changed (or all when solo state flips)
+        const prevSoloedCount = Object.values(prevMixerState.channels).filter(
+          (ch) => ch.solo,
+        ).length;
+        const soloChanged = (prevSoloedCount > 0) !== anySolo;
+
+        for (const [idStr, ch] of Object.entries(mixerState.channels)) {
+          const channelId = Number(idStr);
+          const prev = prevMixerState.channels[channelId];
+          const channelChanged =
+            !prev ||
+            prev.volume !== ch.volume ||
+            prev.pan !== ch.pan ||
+            prev.muted !== ch.muted ||
+            prev.solo !== ch.solo ||
+            soloChanged;
+
+          if (!channelChanged) continue;
+
+          // Effective mute: explicitly muted OR another channel is solo'd
+          const effectiveMute = ch.muted || (anySolo && !ch.solo);
+
+          // CC 7 — Main Volume (0–127)
+          const ccVolume = effectiveMute ? 0 : Math.round((ch.volume / 100) * 127);
+          // CC 10 — Pan (0–127, 64 = centre)
+          const ccPan = Math.round(((ch.pan + 100) / 200) * 127);
+
+          synth.controllerChange(channelId, 7 as Parameters<typeof synth.controllerChange>[1], ccVolume);
+          synth.controllerChange(channelId, 10 as Parameters<typeof synth.controllerChange>[1], ccPan);
+        }
+      });
+
       // Load default SoundFont if not already loaded
       try {
         await _synthWrapper.loadSoundFont("/soundfonts/chops-instruments.sf2");
@@ -125,22 +171,56 @@ export const usePlayerStore = create<PlayerStore>()((set, get) => ({
 
   loadMidi: async (url: string): Promise<void> => {
     set({ isLoading: true, error: null });
+    console.log("[PlayerStore] loadMidi:", url);
 
     try {
       // Fetch the MIDI file using fetchSoundFont (returns ArrayBuffer directly)
       const buffer = await fetchSoundFont(url);
+      console.log("[PlayerStore] MIDI fetched, byteLength:", buffer.byteLength);
 
       // Parse the MIDI file
       const song = parseMidiFile(buffer);
+      console.log("[PlayerStore] MIDI parsed, duration:", song.durationSeconds, "s, tracks:", song.tracks.length);
 
       set({ song, isLoading: false });
 
       // Load into sequencer
       if (_sequencerWrapper) {
+        console.log("[PlayerStore] loading into sequencer");
         _sequencerWrapper.load(song);
         _sequencerWrapper.loadRawMidi(buffer);
+      } else {
+        console.warn("[PlayerStore] _sequencerWrapper is null — MIDI not loaded into sequencer");
       }
     } catch (error) {
+      console.error("[PlayerStore] loadMidi failed:", error);
+      set({
+        error: error instanceof Error ? error.message : "Failed to load MIDI",
+        isLoading: false,
+      });
+      throw error;
+    }
+  },
+
+  loadMidiBuffer: async (buffer: ArrayBuffer, fileName?: string): Promise<void> => {
+    set({ isLoading: true, error: null });
+    console.log("[PlayerStore] loadMidiBuffer:", fileName ?? "(unnamed)", "byteLength:", buffer.byteLength);
+
+    try {
+      const song = parseMidiFile(buffer);
+      console.log("[PlayerStore] MIDI parsed, duration:", song.durationSeconds, "s, tracks:", song.tracks.length);
+
+      set({ song, isLoading: false });
+
+      if (_sequencerWrapper) {
+        console.log("[PlayerStore] loading buffer into sequencer");
+        _sequencerWrapper.load(song);
+        _sequencerWrapper.loadRawMidi(buffer);
+      } else {
+        console.warn("[PlayerStore] _sequencerWrapper is null — MIDI not loaded into sequencer");
+      }
+    } catch (error) {
+      console.error("[PlayerStore] loadMidiBuffer failed:", error);
       set({
         error: error instanceof Error ? error.message : "Failed to load MIDI",
         isLoading: false,
@@ -150,6 +230,11 @@ export const usePlayerStore = create<PlayerStore>()((set, get) => ({
   },
 
   play: (): void => {
+    console.log("[PlayerStore] play() — synth ready:", _synthWrapper?.isReady, "seq:", _sequencerWrapper !== null);
+    // Resume AudioContext on user gesture (browser autoplay policy)
+    if (_synthWrapper?.isReady) {
+      void _synthWrapper.audioContext.resume();
+    }
     if (_sequencerWrapper) {
       _sequencerWrapper.play();
       set({ playbackState: "playing" });

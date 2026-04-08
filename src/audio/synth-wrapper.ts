@@ -52,6 +52,9 @@ export class SynthWrapper implements Synth {
     // Wait for the synth to be ready
     await this._synth.isReady;
 
+    // Connect synth output to the AudioContext destination so audio plays
+    this._synth.connect(ctx.destination);
+
     this._isReady = true;
   }
 

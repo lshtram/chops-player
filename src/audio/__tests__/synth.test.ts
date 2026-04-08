@@ -41,11 +41,17 @@ const makeAudioContextMock = (): {
 const makeSpessaSynthMock = (): {
   soundBankManager: { addSoundBank: ReturnType<typeof vi.fn> };
   isReady: Promise<void>;
+  connect: ReturnType<typeof vi.fn>;
+  disconnect: ReturnType<typeof vi.fn>;
+  destroy: ReturnType<typeof vi.fn>;
 } => ({
   soundBankManager: {
     addSoundBank: vi.fn().mockResolvedValue(undefined),
   },
   isReady: Promise.resolve(),
+  connect: vi.fn().mockReturnValue({}),
+  disconnect: vi.fn().mockReturnValue(undefined),
+  destroy: vi.fn(),
 });
 
 vi.mock("spessasynth_lib", () => {

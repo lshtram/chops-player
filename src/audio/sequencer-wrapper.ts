@@ -28,6 +28,7 @@ export class SequencerWrapper implements SequencerInterface {
   private readonly _synth: Synth;
   loop = false;
   onPositionChange: ((position: PlaybackPosition) => void) | null = null;
+  private _rafId: number | null = null;
 
   constructor(synth: Synth) {
     this._synth = synth;
@@ -45,13 +46,77 @@ export class SequencerWrapper implements SequencerInterface {
       this._spessaSeq = new Sequencer(
         this._synth.getNativeSynth(),
       );
+      console.log("[SequencerWrapper] Sequencer created successfully");
       return this._spessaSeq;
-    } catch {
+    } catch (err) {
       // SpessaSynth Sequencer creation failed (e.g., in test environment with mock synth)
       // Return null - state management will still work in the wrapper
+      console.error("[SequencerWrapper] Sequencer creation failed:", err);
       return null;
     }
   }
+
+  /**
+   * Get the tempo in microseconds-per-beat at a given tick.
+   * Falls back to MIDI default (500000 µs/beat = 120 BPM) if no tempo map.
+   */
+  private _getTempoAtTick(_tick: number): number {
+    const tempoMap = this._song?.tempoMap;
+    if (!tempoMap || tempoMap.length === 0) {
+      return 500000; // MIDI default: 500000 µs/beat = 120 BPM
+    }
+    // Find the last tempo event at or before the given tick
+    let result = tempoMap[0]!.microsecondsPerBeat;
+    for (const event of tempoMap) {
+      if (event.tick <= _tick) {
+        result = event.microsecondsPerBeat;
+      } else {
+        break;
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Convert seconds to a PlaybackPosition using the song's time signature and tempo map.
+   */
+  private _secondsToPosition(seconds: number): PlaybackPosition {
+    const ticksPerBeat = this._song?.ticksPerBeat ?? 480;
+    const timeSig = this._song?.timeSignatures[0];
+    const beatsPerBar = timeSig?.numerator ?? 4;
+    const ticksPerBar = ticksPerBeat * beatsPerBar;
+
+    // Convert seconds to ticks using the song's tempo
+    // tempo is stored as microsecondsPerBeat; convert to seconds per beat
+    const microsecondsPerBeat = this._getTempoAtTick(0);
+    const secondsPerBeat = microsecondsPerBeat / 1_000_000;
+    const totalBeats = seconds / secondsPerBeat;
+    const tick = Math.floor(totalBeats * ticksPerBeat);
+    const bar = Math.floor(tick / ticksPerBar) + 1;
+    const beatInBar = Math.floor((tick % ticksPerBar) / ticksPerBeat) + 1;
+
+    return {
+      tick,
+      seconds,
+      bar,
+      beat: beatInBar,
+    };
+  }
+
+  private _updatePosition = (): void => {
+    if (this._state !== "playing") {
+      return;
+    }
+    const seq = this.ensureSequencer();
+    if (seq) {
+      const seconds = seq.currentHighResolutionTime;
+      this._position = this._secondsToPosition(seconds);
+    }
+    if (this.onPositionChange) {
+      this.onPositionChange(this._position);
+    }
+    this._rafId = requestAnimationFrame(this._updatePosition);
+  };
 
   get state(): PlaybackState {
     return this._state;
@@ -81,24 +146,34 @@ export class SequencerWrapper implements SequencerInterface {
    * Called by the store after parsing MIDI to get raw bytes.
    */
   loadRawMidi(buffer: ArrayBuffer): void {
+    console.log("[SequencerWrapper] loadRawMidi called, buffer size:", buffer.byteLength);
     const seq = this.ensureSequencer();
     if (seq) {
+      console.log("[SequencerWrapper] calling loadNewSongList");
       // SpessaSynth expects SuppliedMIDIData with binary: ArrayBuffer
       seq.loadNewSongList([{ binary: buffer }]);
+      console.log("[SequencerWrapper] loadNewSongList done");
+    } else {
+      console.warn("[SequencerWrapper] loadRawMidi: sequencer is null, MIDI not loaded");
     }
   }
 
   play(): void {
     this._state = "playing";
     const seq = this.ensureSequencer();
+    console.log("[SequencerWrapper] play() called, seq:", seq !== null ? "ready" : "NULL");
     if (seq) {
       seq.play();
+      console.log("[SequencerWrapper] seq.play() called");
     }
 
     // P1-TR-009: onPositionChange must be called SYNCHRONOUSLY when play() is called
     if (this.onPositionChange) {
       this.onPositionChange(this._position);
     }
+
+    // Start position polling so the timer advances during playback
+    this._rafId = requestAnimationFrame(this._updatePosition);
   }
 
   pause(): void {
@@ -106,6 +181,10 @@ export class SequencerWrapper implements SequencerInterface {
     const seq = this.ensureSequencer();
     if (seq) {
       seq.pause();
+    }
+    if (this._rafId !== null) {
+      cancelAnimationFrame(this._rafId);
+      this._rafId = null;
     }
   }
 
@@ -115,6 +194,10 @@ export class SequencerWrapper implements SequencerInterface {
     if (seq) {
       seq.pause();
       seq.currentTime = 0;
+    }
+    if (this._rafId !== null) {
+      cancelAnimationFrame(this._rafId);
+      this._rafId = null;
     }
 
     this._position = {
@@ -130,26 +213,33 @@ export class SequencerWrapper implements SequencerInterface {
   }
 
   seekToTick(tick: number): void {
-    this._position = {
-      ...this._position,
-      tick,
-    };
+    const ticksPerBeat = this._song?.ticksPerBeat ?? 480;
+    const timeSig = this._song?.timeSignatures[0];
+    const beatsPerBar = timeSig?.numerator ?? 4;
+    const ticksPerBar = ticksPerBeat * beatsPerBar;
+    const bar = Math.floor(tick / ticksPerBar) + 1;
+    const beatInBar = Math.floor((tick % ticksPerBar) / ticksPerBeat) + 1;
+
+    // Convert tick to seconds for the sequencer
+    const microsecondsPerBeat = this._getTempoAtTick(tick);
+    const secondsPerBeat = microsecondsPerBeat / 1_000_000;
+    const seconds = (tick / ticksPerBeat) * secondsPerBeat;
+
+    this._position = { tick, seconds, bar, beat: beatInBar };
+
+    const seq = this.ensureSequencer();
+    if (seq) {
+      seq.currentTime = seconds;
+    }
   }
 
   seekToBar(bar: number): void {
-    // Calculate tick from bar using song's time signature
-    // Default: 4/4 time, 480 ticks per beat
     const ticksPerBeat = this._song?.ticksPerBeat ?? 480;
     const timeSig = this._song?.timeSignatures[0];
-    const beatsPerBar = timeSig ? timeSig.numerator : 4;
+    const beatsPerBar = timeSig?.numerator ?? 4;
     const ticksPerBar = ticksPerBeat * beatsPerBar;
 
     const tick = (bar - 1) * ticksPerBar;
-    this._position = {
-      ...this._position,
-      tick,
-      bar,
-      beat: 1,
-    };
+    this.seekToTick(tick);
   }
 }

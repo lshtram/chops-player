@@ -53,6 +53,7 @@ vi.mock("@stores/player-store", () => ({
       stop: mockStop,
       initialize: mockInitialize,
       loadMidi: vi.fn(),
+      loadMidiBuffer: vi.fn(),
       seekToTick: vi.fn(),
       seekToBar: vi.fn(),
     };

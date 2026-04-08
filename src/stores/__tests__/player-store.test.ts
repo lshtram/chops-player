@@ -40,7 +40,7 @@ vi.mock("../../audio/synth-wrapper.js", () => ({
     loadSoundFont: vi.fn().mockResolvedValue(undefined),
     isReady: true,
     dispose: vi.fn(),
-    audioContext: {},
+    audioContext: { resume: vi.fn().mockResolvedValue(undefined) },
   })),
 }));
 
